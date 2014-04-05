@@ -3,6 +3,7 @@ import serial
 import time
 import sys
 import math
+import os.path
 
 comport = "COM3"
 
@@ -32,24 +33,51 @@ class moving_average(object):
                 avg = float(avg) / len(self.samples)
                 return avg
 
-ma = moving_average(10)
+samples_rcvd = 0
 
 def receive_packet(data):
-	if(data['id'] == 'rx'):
-		xbee.at(frame='A', command="DB")
-	else:
-		ma.sample(ord(data['parameter']))
-		ma_dist = rssi_to_distance(ma.average, fit_a, fit_b)
-		print "Packet received:\tMA_RSSI {0}\tMA_DIST {1}".format(ma.average, ma_dist)        
+        if(data['id'] == 'rx'):
+                xbee.at(frame='A', command="DB")
+        else:
+                try:
+                        global samples_rcvd
+                        ma.sample(ord(data['parameter']))
+                        ma_dist = rssi_to_distance(ma.average, fit_a, fit_b)
+                        print "Packet received:\tMA_RSSI {0}\tMA_DIST {1}".format(ma.average, ma_dist)
+                        samples_rcvd += 1
+                except:
+                        pass
                 
-
-xbee = ZigBee(ser, callback=receive_packet)
+print "Starting serial..."
 
 while(1):
-	try:
-		time.sleep(.01)
-	except:
-		print "DONE"
-		xbee.halt()
-		ser.close()
-		sys.exit(0)
+        try:
+                sample_count = int(raw_input("Samples: ")) 
+                ma = moving_average(sample_count)
+                global samples_rcvd
+                samples_rcvd = 0
+
+                ser.flushInput()
+                xbee = ZigBee(ser, callback=receive_packet)
+                
+                while(samples_rcvd < sample_count):
+                        time.sleep(.01)
+
+                xbee.halt()
+                filename = "samples/sample{0}.csv"
+                file_ext = 0
+                while(True):
+                        csvfile = filename.format(file_ext)
+                        if not os.path.isfile(filename.format(file_ext)):
+                                print "Saving samples as " + csvfile
+                                csv = open(csvfile, "w")
+
+                                for sample in ma.samples:
+                                        print sample
+                                        csv.write( str(sample) + "\n" )
+                                csv.close()
+                                break
+                        file_ext += 1
+        except:
+                ser.close()
+                sys.exit(0)
