@@ -7,6 +7,7 @@ import os.path
 import Queue
 import threading
 import datetime
+import winsound
 import Tkinter as tk
 
 MODE_SOUND = "K"
@@ -29,9 +30,10 @@ class roam_app(object):
                 self.xbee = None
                 self.queue = []
                 self.status = STATE_DISCONNECTED
-                self.connect()
                 self.pings = []
                 self.get_rssi = False
+                self.output = 1
+                self.connect()
 
         @property
         def state(self):
@@ -95,6 +97,11 @@ class roam_app(object):
                                         self.status = STATE_DISCONNECTED
                                 return
 
+                if packet['id'] == 'tx_status':
+                        status = packet['deliver_status']
+                        if status != '\x00':
+                                print "PACKET FAILURE"
+
                 if packet['id'] == 'at_response' and packet['frame_id'] == "A":
                         self.rssi = packet['parameter']
                         self.pings.append([datetime.datetime.now(), ord(packet['parameter'])])
@@ -153,23 +160,26 @@ class roam_app(object):
                         total_rssi += ping[1]
                 current_avg_rssi = float(total_rssi)/len(self.pings)
 
-                if( len(self.pings) > 20 and current_avg_rssi < 70):
+                if( len(self.pings) > 15 and current_avg_rssi < 70):
                         return [3, len(self.pings), current_avg_rssi]
 
                 if( len(self.pings) > 10 and current_avg_rssi < 75):
                         return [2, len(self.pings), current_avg_rssi]
 
-                if( len(self.pings) > 8):
+                if( len(self.pings) > 5 and current_avg_rssi < 80):
                         return [1, len(self.pings), current_avg_rssi]
 
                 return [0, len(self.pings), current_avg_rssi]
-                
+
+        def keypress(self, event):
+                self.output = 5
 
         def mainloop(self):
                 try:
                         master = tk.Tk()
                         can = tk.Canvas(master, width = LENGTH, height = HEIGHT)
                         can.pack()
+                        can.bind_all("<Key>", self.keypress)
                         
                         status_count = 0
                         
@@ -185,23 +195,35 @@ class roam_app(object):
                                 if status_count == 50:
                                         status_count = 0
 
-                                        caution_level = self.caution_handler()[0]
-                                        print caution_level
+                                        caution = self.caution_handler()
+                                        caution_level = caution[0]
+                                        print caution
                                         
                                         fill = "green"
                                         if caution_level == 2:
                                                 fill = "yellow"
+                                                
                                         if caution_level == 1:
                                                 fill = "orange"
+                                                winsound.Beep(1000, 100)
+                                                
                                         if caution_level == 0:
                                                 fill = "red"
+                                                self.send("N")
+                                                winsound.Beep(1700, 500)
                                         
                                         can.create_rectangle(0, 0, LENGTH, HEIGHT, fill=fill)
                                         master.update()
+
+                                        if caution_level > 0:
+                                                if self.output:
+                                                        self.output -= 1
+                                                        print "P"
+                                                        self.send("P")
                                         
                                 if (status_count % 10) == 0:
-                                        # Send pings
-                                        pass
+                                        print "A"
+                                        self.send('A')
                                         
                                 time.sleep(.01)
                 except:
