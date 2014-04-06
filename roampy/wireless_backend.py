@@ -44,6 +44,7 @@ class roam_app(object):
                 self.get_rssi = False
                 self.output = 1
                 self.emergency = False
+                self.last_rcvd_pkt = '\xFF'
                 self.connect()
 
         @property
@@ -71,7 +72,7 @@ class roam_app(object):
                         self.ser = None
                         print "App ended."
 
-        def send(self, data):
+        def send(self, data, ack=True):
                 self.response = False
                 if not self.xbee:
                         self.connect()
@@ -96,6 +97,7 @@ class roam_app(object):
                         return
                 
                 if packet['id'] == 'tx_status':
+                        self.last_rcvd_pkt = packet['deliver_status']
                         self.response = True
         
                 if self.status == STATE_WAITING_FOR_LINK:
@@ -133,6 +135,17 @@ class roam_app(object):
                 while self.status != STATE_CONNECTED:
                         time.sleep(.1)
                         self.link()
+                # Give it a 5 second grace period
+                self.pings.append([datetime.datetime.now() + datetime.timedelta(seconds = 5), 30])
+                self.pings.append([datetime.datetime.now() + datetime.timedelta(seconds = 5), 30])
+                self.pings.append([datetime.datetime.now() + datetime.timedelta(seconds = 5), 30])
+                self.pings.append([datetime.datetime.now() + datetime.timedelta(seconds = 5), 30])
+                self.pings.append([datetime.datetime.now() + datetime.timedelta(seconds = 5), 30])
+                self.pings.append([datetime.datetime.now() + datetime.timedelta(seconds = 5), 30])
+                self.pings.append([datetime.datetime.now() + datetime.timedelta(seconds = 5), 30])
+                self.pings.append([datetime.datetime.now() + datetime.timedelta(seconds = 5), 30])
+                self.pings.append([datetime.datetime.now() + datetime.timedelta(seconds = 5), 30])
+                self.pings.append([datetime.datetime.now() + datetime.timedelta(seconds = 5), 30])
                 print "Link successful."
                     
         def get_last_rssi(self):
@@ -175,19 +188,19 @@ class roam_app(object):
                 current_avg_rssi = float(total_rssi)/len(self.pings)
                 return_level = 0
 
-                if( len(self.pings) > 15 and current_avg_rssi < 70):
+                if( (len(self.pings) > 15) and (current_avg_rssi < 70)):
                         if not self.emergency:
                                 return_level = 3
                         return [return_level, len(self.pings), current_avg_rssi, self.emergency]
 
-                if( len(self.pings) > 10 and current_avg_rssi < 75):
+                if( (len(self.pings) > 10) and (current_avg_rssi < 76)):
                         if not self.emergency:
-                                return_level = 3
+                                return_level = 2
                         return [return_level, len(self.pings), current_avg_rssi, self.emergency]
 
-                if( len(self.pings) > 5 and current_avg_rssi < 80):
+                if( (len(self.pings) > 5) and (current_avg_rssi < 82)):
                         if not self.emergency:
-                                return_level = 3
+                                return_level = 1
                         return [return_level, len(self.pings), current_avg_rssi, self.emergency]
 
                 return [return_level, len(self.pings), current_avg_rssi, self.emergency]
@@ -212,6 +225,9 @@ class roam_app(object):
                         can.bind_all("<Key>", self.keypress)
                         
                         status_count = 0
+                        alternator = 0
+                        just_flipped = 0
+                        last_caution_level = 3
                         
                         while(self.status == STATE_CONNECTED):
                                 self.process()
@@ -220,12 +236,13 @@ class roam_app(object):
                                         self.get_last_rssi()
                                         
                                 self.clean_pings(4)
+                                caution = self.caution_handler()
+
 
                                 status_count = status_count + 1
                                 if status_count == 50:
                                         status_count = 0
 
-                                        caution = self.caution_handler()
                                         caution_level = caution[0]
                                         print caution
                                         
@@ -238,26 +255,37 @@ class roam_app(object):
                                                 winsound.Beep(1075, 100)
                                                 
                                         if caution_level == 0:
-                                                fill = "red"
+                                            if last_caution_level != 0:
+                                                just_flipped = 3
+
+                                            fill = "red"
+
+                                            if just_flipped:
                                                 self.send("N")
-                                                winsound.Beep(1075, 500)
+                                                just_flipped -= 1
+                                            
+                                            self.send("A")
+                                            winsound.Beep(1075, 500)
                                         
                                         threading.Thread(target = server_post, args = (caution_level,)).start()
                                         threading.Thread(target = self.get_alarm_off).start()
 
                                         can.create_rectangle(0, 0, LENGTH, HEIGHT, fill=fill)
-                                        master.update()
 
                                         if caution_level > 0:
                                                 if self.output:
                                                         self.output -= 1
                                                         print "P"
                                                         self.send("P")
-                                        
-                                if (status_count % 10) == 0:
-                                        print "A"
-                                        self.send('A')
-                                        
+
+                                        last_caution_level = caution_level
+                                
+                                if self.last_rcvd_pkt == '\x00':        
+                                    if (status_count % 10) == 0:
+                                            print "A"
+                                            self.send('A')                                    
+
+                                master.update()
                                 time.sleep(.01)
                 except:
                         try:
