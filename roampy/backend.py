@@ -9,6 +9,8 @@ import threading
 import datetime
 import winsound
 import Tkinter as tk
+import requests
+import json
 
 MODE_SOUND = "K"
 MODE_VIBRATE = "L"
@@ -21,6 +23,14 @@ STATE_WAITING_FOR_LINK = 2
 
 LENGTH = 1600
 HEIGHT = 900
+
+def server_post(caution_level):
+        url = "http://localhost:5000"
+        data = {'content': caution_level}
+        headers = {'Content-type': 'application/json', 'Accept': 'text/plain'}
+        requests.post(url, data=json.dumps(data), headers=headers)
+        print "POSTED"
+
 
 class roam_app(object):
         def __init__(self, size, com):
@@ -187,6 +197,13 @@ class roam_app(object):
                 self.emergency = False
                 self.output = 5
 
+        def get_alarm_off(self):
+                q = requests.request("GET", "http://localhost:5000/alarm/")
+                if q.content == "1":
+                        print "FOUND ALARM OFF"
+                        self.emergency = False
+                        self.output = 5
+
         def mainloop(self):
                 master = tk.Tk()
                 try:     
@@ -225,6 +242,9 @@ class roam_app(object):
                                                 self.send("N")
                                                 winsound.Beep(1075, 500)
                                         
+                                        threading.Thread(target = server_post, args = (caution_level,)).start()
+                                        threading.Thread(target = self.get_alarm_off).start()
+
                                         can.create_rectangle(0, 0, LENGTH, HEIGHT, fill=fill)
                                         master.update()
 
@@ -246,7 +266,7 @@ class roam_app(object):
                                 pass
                         print sys.exc_info()[0]
                         print "DONE"
-                
+        
 
 roam = roam_app(10, 'COM3')
 roam.scan()
