@@ -33,6 +33,7 @@ class roam_app(object):
                 self.pings = []
                 self.get_rssi = False
                 self.output = 1
+                self.emergency = False
                 self.connect()
 
         @property
@@ -109,7 +110,10 @@ class roam_app(object):
 
                 if packet['id'] == 'rx':
                         if packet['rf_data'][0] == "A":
-                                self.get_rssi = True     
+                                self.get_rssi = True
+                        if packet['rf_data'][0] == "Y":
+                                print "EMERG RCVD"
+                                self.emergency = True
 
 
         def receive_handler(self, data):
@@ -159,24 +163,33 @@ class roam_app(object):
                 for ping in self.pings:
                         total_rssi += ping[1]
                 current_avg_rssi = float(total_rssi)/len(self.pings)
+                return_level = 0
 
                 if( len(self.pings) > 15 and current_avg_rssi < 70):
-                        return [3, len(self.pings), current_avg_rssi]
+                        if not self.emergency:
+                                return_level = 3
+                        return [return_level, len(self.pings), current_avg_rssi, self.emergency]
 
                 if( len(self.pings) > 10 and current_avg_rssi < 75):
-                        return [2, len(self.pings), current_avg_rssi]
+                        if not self.emergency:
+                                return_level = 3
+                        return [return_level, len(self.pings), current_avg_rssi, self.emergency]
 
                 if( len(self.pings) > 5 and current_avg_rssi < 80):
-                        return [1, len(self.pings), current_avg_rssi]
+                        if not self.emergency:
+                                return_level = 3
+                        return [return_level, len(self.pings), current_avg_rssi, self.emergency]
 
-                return [0, len(self.pings), current_avg_rssi]
+                return [return_level, len(self.pings), current_avg_rssi, self.emergency]
 
         def keypress(self, event):
+                print "E OFF"
+                self.emergency = False
                 self.output = 5
 
         def mainloop(self):
-                try:
-                        master = tk.Tk()
+                master = tk.Tk()
+                try:     
                         can = tk.Canvas(master, width = LENGTH, height = HEIGHT)
                         can.pack()
                         can.bind_all("<Key>", self.keypress)
@@ -205,12 +218,12 @@ class roam_app(object):
                                                 
                                         if caution_level == 1:
                                                 fill = "orange"
-                                                winsound.Beep(1000, 100)
+                                                winsound.Beep(1075, 100)
                                                 
                                         if caution_level == 0:
                                                 fill = "red"
                                                 self.send("N")
-                                                winsound.Beep(1700, 500)
+                                                winsound.Beep(1075, 500)
                                         
                                         can.create_rectangle(0, 0, LENGTH, HEIGHT, fill=fill)
                                         master.update()
@@ -227,6 +240,10 @@ class roam_app(object):
                                         
                                 time.sleep(.01)
                 except:
+                        try:
+                                master.destroy()
+                        except:
+                                pass
                         print sys.exc_info()[0]
                         print "DONE"
                 
@@ -235,6 +252,7 @@ roam = roam_app(10, 'COM3')
 roam.scan()
 roam.mainloop()
 roam.disconnect()
+sys.exit(0)
 
 
 
